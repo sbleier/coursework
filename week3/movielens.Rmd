@@ -35,6 +35,7 @@ head(ratings) %>% kable()
 
 ```{r dist-ratings}
 # plot the distribution of rating values https://speakerdeck.com/jhofman/modeling-social-data-lecture-2-introduction-to-counting?slide=26
+ratings |> group_by(rating) |> mutate(num_of_ratings = n()) |> ggplot(aes(x = rating)) + geom_histogram()
 ```
 
 ## Per-movie stats
@@ -42,16 +43,19 @@ head(ratings) %>% kable()
 ```{r aggregate-by-movie}
 # aggregate ratings by movie, computing mean rating and number of ratings
 # hint: use the n() function for easy counting within a group
+ratings |> group_by(movie_id) |> summarize(num_of_ratings = n(), mean_rating = mean(rating)) |> head()
 ```
 
 ```{r dist-movie-popularity}
 # plot distribution of movie popularity (= number of ratings the movie received)
 # hint: try scale_x_log10() for a logarithmic x axis
+ratings |> group_by(movie_id) |> summarize(num_of_ratings = n()) |> ggplot(aes(x=num_of_ratings)) + geom_histogram() + scale_x_log10()
 ```
 
 ```{r dist-mean-ratings-by-movie}
 # plot distribution of mean ratings by movie https://speakerdeck.com/jhofman/modeling-social-data-lecture-2-introduction-to-counting?slide=28
 # hint: try geom_histogram and geom_density
+ ratings |> group_by(movie_id) |> summarize(mean_of_ratings = mean(rating)) |> ggplot(aes(x = mean_of_ratings)) + geom_density(fill="black")
 ```
 
 ```{r cdf-movie-pop}
@@ -60,6 +64,9 @@ head(ratings) %>% kable()
 # store the result in a new data frame so you can use it in creating figure 2 from the paper below
 
 # plot the CDF of movie popularity
+ratings |> group_by(movie_id) |> summarize(count = n()) |> mutate(rank = rank(-count)) |> 
+arrange(rank) |> mutate(cdf = cumsum(count)/sum(count)) |> 
+ggplot(aes(x=rank, y=cdf)) + geom_line() + scale_y_continuous(labels=percent_format()) + labs(x="Movie Rank", y="CDF")
 ```
 
 
@@ -67,11 +74,14 @@ head(ratings) %>% kable()
 
 ```{r aggregate-by-user}
 # aggregate ratings by user, computing mean and number of ratings
+ratings |> group_by(user_id) |> summarize(num_of_ratings = n(), mean_rating = mean(rating)) 
 ```
 
 ```{r dist-user-activity}
 # plot distribution of user activity (= number of ratings the user made)
 # hint: try a log scale here
+ratings |> group_by(user_id) |> summarize(num_of_ratings = n()) |> ggplot(aes(x=num_of_ratings)) + geom_histogram() + scale_x_log10()
+
 ```
 
 # Anatomy of the long tail
@@ -91,4 +101,30 @@ head(ratings) %>% kable()
 # paper, produce one curve for the 100% user satisfaction level and
 # another for 90%---do not, however, bother implementing the null
 # model (shown in the dashed lines).
+users_with_ten <- ratings |> group_by(user_id) |> summarize(num_of_ratings = n()) |> 
+filter(num_of_ratings >= 10)
+
+ranked_movies <- ratings |> group_by(movie_id) |> summarize(count = n()) |> mutate(rank = rank(-count)) |> arrange(rank)
+user_movies <- ratings |> filter(user_id %in% users_with_ten$user_id) |> group_by(user_id)
+lowest_rated <- user_movies |> left_join(ranked_movies, by = "movie_id") |> group_by(user_id) |> summarize(lowest_rate = max(rank))
+lowest_rated90 <- user_movies |> left_join(ranked_movies, by = "movie_id") |> group_by(user_id) |> summarize(lowest_rate = quantile(rank, 0.9))
+
+lowest_rated <- lowest_rated |> arrange(lowest_rate)
+lowest_rated90 <- lowest_rated90 |> arrange(lowest_rate)
+num_of_users <- lowest_rated |> group_by(lowest_rate) |> summarize(count = n())
+num_of_users90 <- lowest_rated90 |> group_by(lowest_rate) |> summarize(count = n())
+
+num_of_users <- mutate(num_of_users, cumulated = cumsum(count), satisfied = cumulated/69678)
+num_of_users90 <- mutate(num_of_users90, cumulated = cumsum(count), satisfied = cumulated/69678)
+
+combined <- bind_rows(
+  "100%" = num_of_users,
+  "90%" = num_of_users90,
+  .id = "satisfaction"
+)
+
+ggplot(combined, aes(x = lowest_rate, y = satisfied, color = satisfaction)) +
+  geom_line() + labs(x="Inventory Size", y="Percent of Users Satisfied") + geom_line(aes(x=3000), color = "Black", linetype = 5)
+#ggplot(num_of_users, aes(x=lowest_rate, y=cumsum(count)/69678)) + geom_line()
+#ggplot(num_of_users90, aes(x=lowest_rate, y=cumsum(count)/69678)) + geom_line()
 ```

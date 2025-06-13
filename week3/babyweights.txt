@@ -1,4 +1,4 @@
-"bwt" "gestation" "parity" "age" "height" "weight" "smoke"
+"colname" "bwt" "gestation" "parity" "age" "height" "weight" "smoke"
 "1" 120 284 0 27 62 100 0
 "2" 113 282 0 33 64 135 0
 "3" 128 279 0 28 64 115 1
