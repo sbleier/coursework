@@ -115,7 +115,7 @@ They seem similar, but are a lot less steep and fall down much faster. They also
 Plot the raw counts for the terms "1883", "1910", and "1950" over time from 1850 to 2012. Use the `comma` function from the `scales` package for a readable y axis. The colors for each term should match your last plot, and it's nice if these match the original paper but not strictly necessary.
 
 ```{r plot-raw-mentions-over-time}
-ggplot(year_data, aes(x=year, y = volume*10000, color = term)) + geom_line() + scale_y_continuous(labels = comma) + scale_color_manual(values = c("1883" = "blue", "1910" = "green", "1950" = "red")) + labs(x = "Year", y="Volume")
+ggplot(year_data, aes(x=year, y = volume, color = term)) + geom_line() + scale_y_continuous(labels = comma) + scale_color_manual(values = c("1883" = "blue", "1910" = "green", "1950" = "red")) + labs(x = "Year", y="Volume")
 ```
 
 # Part E
@@ -223,5 +223,5 @@ Write up your answer to Part G here. Include code that shows the years with the 
 
 # Makefile
 half_life |> filter(half_life == max(half_life))
-half_life |> filter(half_life == min(half_life))
+half_life |> filter(hailf_life == min(half_life))
 Edit the `Makefile` in this directory to execute the full set of scripts that download the data, clean it, and produce this report. This must be turned in with your assignment such that running `make` on the command line produces the final report as a pdf file.
