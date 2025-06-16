@@ -1,0 +1,292 @@
+library(tidyverse)
+library(scales)
+library(modelr)
+trips_per_day_with_test <- read_tsv("trips_per_day.tsv")
+
+
+set.seed(24)
+
+num_days <- nrow(trips_per_day_with_test)
+frac_test <- 0.1
+num_test <- floor(num_days * frac_test)
+
+# randomly sample rows for the test set 
+ndx <- sample(1:num_days, num_test, replace=F)
+
+# used to fit the model
+trips_per_day <- trips_per_day_with_test[-ndx, ]
+test_set <- trips_per_day_with_test[ndx, ]
+
+#k-fold cross-validation
+set.seed(42)
+num_folds <- 5
+num_days_train <- nrow(trips_per_day)
+
+trips_per_day <- trips_per_day %>%
+  mutate(fold = (row_number() %% num_folds) + 1)
+
+# fit a model for each polynomial degree
+K <- 1:8
+avg_validate_err <- c()
+se_validate_err <- c()
+for (k in K) {
+  # do 5-fold cross-validation within each value of k
+  validate_err <- c()
+  for (f in 1:num_folds) {
+    # fit on the training data
+    trips_per_day_train <- filter(trips_per_day, fold != f)
+    model <- lm(num_trips ~ poly(tmin, k, raw = T), data=trips_per_day_train)
+
+    # evaluate on the validation data
+    trips_per_day_validate <- filter(trips_per_day, fold == f)
+    validate_err[f] <- sqrt(mean((predict(model, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+  }
+
+  # compute the average validation error across folds
+  # and the standard error on this estimate
+  avg_validate_err[k] <- mean(validate_err)
+  se_validate_err[k] <- sd(validate_err) / sqrt(num_folds)
+}
+# plot the validate error, highlighting the value of k with the lowest average error
+plot_data <- data.frame(K, avg_validate_err, se_validate_err)
+ggplot(plot_data, aes(x=K, y=avg_validate_err)) +
+  geom_pointrange(aes(ymin=avg_validate_err - se_validate_err,
+                      ymax=avg_validate_err + se_validate_err,
+                      color=avg_validate_err == min(avg_validate_err))) +
+  geom_line(color = "red") +
+  scale_x_continuous(breaks=1:12) +
+  theme(legend.position="none") +
+  xlab('Polynomial Degree') +
+  ylab('RMSE on validation data')
+
+
+#delete fold
+trips_per_day <- select(trips_per_day, -fold)
+#cross-validate with checking with all features through adding
+set.seed(42)
+
+num_days <- nrow(trips_per_day)
+frac_train <- 0.8
+num_train <- floor(num_days * frac_train)
+
+# randomly sample rows for the training set 
+ndx <- sample(1:num_days, num_train, replace=F)
+
+# used to fit the model
+trips_per_day_train <- trips_per_day[ndx, ]
+
+# used to evaluate the fit
+trips_per_day_validate <- trips_per_day[-ndx, ]
+
+# fit on the training data
+model_with_all_additive <- lm(num_trips ~ . - date - ymd, data = trips_per_day_train)
+
+# evaluate on the training data
+train_err_all_additive <- sqrt(mean((predict(model_with_all_additive, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_all_additive <- sqrt(mean((predict(model_with_all_additive, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+#training error
+train_err_all_additive
+#[1] 4703.371
+#validation error
+validate_err_all_additive
+#5197.574
+#high error bad model
+
+#interactions
+# fit on the training data
+model_with_all_interactive <- lm(num_trips ~ (snwd + tmax + tmin + snow + prcp)^2, data = trips_per_day_train)
+
+# evaluate on the training data
+train_err_all_interactive <- sqrt(mean((predict(model_with_all_interactive, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_all_interactive <- sqrt(mean((predict(model_with_all_interactive, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_all_interactive
+#4497.649
+validate_err_all_interactive
+#7601.197
+
+model_with_rain_interact <- lm(num_trips ~ . - date - ymd + prcp:tmin , data = trips_per_day_train)
+
+train_err_rain<- sqrt(mean((predict(model_with_rain_interact, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_rain <- sqrt(mean((predict(model_with_rain_interact, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_rain
+#4497.467
+validate_err_rain
+#5992.959
+
+model_with_tmin_interact <- lm(num_trips ~ . - date - ymd + tmin:. - date - ymd, data = trips_per_day_train)
+
+train_err_tmin<- sqrt(mean((predict(model_with_tmin_interact, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_tmin <- sqrt(mean((predict(model_with_tmin_interact, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_tmin
+#4652.297
+validate_err_tmin
+#5647
+
+#model with only snwd and prcp interact with tmin
+model_tmin_snwd_prcp <- lm(num_trips ~ prcp + snwd + snow + tmax + tmin
+   + snwd:tmin + prcp:tmin, data = trips_per_day_train)
+
+train_err_tsp<- sqrt(mean((predict(model_tmin_snwd_prcp, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_tsp <- sqrt(mean((predict(model_tmin_snwd_prcp, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_tsp
+#4669.297
+validate_err_tsp
+#5490.993
+
+trips_per_day_train$month <- as.numeric(format(trips_per_day_train$ymd, "%m"))
+trips_per_day_validate$month <- as.numeric(format(trips_per_day_validate$ymd, "%m"))
+
+model_with_month <- lm(num_trips ~ prcp + snwd + snow + tmax + tmin + month + prcp:tmin + snwd:tmin, data = trips_per_day_train)
+
+train_err_month<- sqrt(mean((predict(model_with_month, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_month <- sqrt(mean((predict(model_with_month, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_month
+#4669
+validate_err_month
+#5490
+
+
+trips_per_day_train <- select(trips_per_day_train, -month)
+trips_per_day_validate <- select(trips_per_day_validate, -month)
+
+model_prcp_snwd_tmax <- lm(num_trips ~ prcp + snwd + tmax - ymd - date, data = trips_per_day_train)
+
+train_err_pst<- sqrt(mean((predict(model_prcp_snwd_tmax, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_pst <- sqrt(mean((predict(model_prcp_snwd_tmax, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_pst
+#4731
+validate_err_pst
+#4975
+
+summary(trips_per_day_train)
+summary(model_prcp_snwd_tmax)
+
+
+model_poly2 <- lm(num_trips ~ poly(tmax, 2, raw=TRUE) + poly(tmin, 2, raw=TRUE) + 
+                              poly(prcp, 2, raw=TRUE) + poly(snow, 2, raw=TRUE) + 
+                              poly(snwd, 2, raw=TRUE), data = trips_per_day_train)
+
+train_err_poly2<- sqrt(mean((predict(model_poly2, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_poly2 <- sqrt(mean((predict(model_poly2, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_poly2
+#4515
+validate_err_poly2
+#15306
+
+model_prcp_snwd_tmax <- lm(num_trips ~ prcp + snwd + tmax - ymd - date, data = trips_per_day_train)
+
+train_err_pst<- sqrt(mean((predict(model_prcp_snwd_tmax, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_pst <- sqrt(mean((predict(model_prcp_snwd_tmax, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_pst
+#4731
+validate_err_pst
+
+interact_prcp_snwd_tmax <- lm(num_trips ~ (prcp + snwd + tmax)^2 - ymd - date, data = trips_per_day_train)
+
+train_err_ipst<- sqrt(mean((predict(interact_prcp_snwd_tmax, trips_per_day_train) - trips_per_day_train$num_trips)^2))
+
+# evaluate on the validate data
+validate_err_ipst <- sqrt(mean((predict(interact_prcp_snwd_tmax, trips_per_day_validate) - trips_per_day_validate$num_trips)^2))
+
+train_err_ipst
+#4648
+validate_err_ipst
+#5913
+get_season <- function(date) {
+  month <- as.numeric(format(date, "%m"))
+  if (month %in% c(12, 1, 2)) {
+    return("Winter")
+  } else if (month %in% c(3, 4, 5)) {
+    return("Spring")
+  } else if (month %in% c(6, 7, 8)) {
+    return("Summer")
+  } else {
+    return("Fall")
+  }
+}
+trips_per_day$season <- sapply(trips_per_day$ymd, get_season)
+trips_per_day$weekday <- !(weekdays(trips_per_day$ymd) %in% c("Saturday", "Sunday"))
+
+
+set.seed(42)
+num_folds <- 5
+num_days <- nrow(trips_per_day)
+
+# K-fold cross validation
+trips_per_day <- trips_per_day %>%
+  mutate(fold = sample(rep(1:num_folds, length.out = num_days)))
+
+
+validate_rmse <- c()
+train_rmse <- c()
+
+# Cross-validation loop
+for (f in 1:num_folds) {
+  # Split into training and validation
+  train_data <- filter(trips_per_day, fold != f)
+  validate_data <- filter(trips_per_day, fold == f)
+  
+  model <- lm(num_trips ~ tmax * high_prcp + snwd + tmax:snow + weekday * season, data = train_data)
+  
+  # Predict and compute RMSE on validation set
+  predictions <- predict(model, newdata = validate_data)
+  t_rmse <- sqrt(mean(predictions - train_data$num_trips)^2)
+  rmse <- sqrt(mean((predictions - validate_data$num_trips)^2))
+  validate_rmse[f] <- rmse
+  train_rmse[f] <- t_rmse
+}
+
+# Results
+average_rmse <- mean(validate_rmse)
+average_train_rmse <- mean(train_rmse)
+se_rmse <- sd(validate_rmse) / sqrt(num_folds)
+
+cat("RMSE for each fold:", round(validate_rmse, 2), "\n")
+cat("Train RMSE for each fold:", round(train_rmse, 2), "\n")
+cat("Average RMSE:", round(average_rmse, 2), "\n")
+cat("Train Average RMSE:", round(average_train_rmse, 2), "\n")
+cat("Standard Error:", round(se_rmse, 2), "\n")
+
+trips_per_day_validate$predicted_trips <- predict(model, newdata = trips_per_day_validate)
+
+ggplot(trips_per_day_validate, aes(x = date)) +
+  geom_point(aes(y = num_trips), color = "blue", alpha = 0.6, size = 2) +
+  geom_line(aes(y = predicted_trips), color = "red", size = 1) +
+  labs(title = "Actual vs Predicted Trips Over Time",
+       x = "Date", y = "Number of Trips") 
+  
+
+ggplot(trips_per_day_validate, aes(x = predicted_trips, y = num_trips)) +
+  geom_point() + geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Predicted vs Actual Trips",
+       x = "Predicted Trips", y = "Actual Trips") 
+
+final_model <- model
+save(final_model, file = "final_model.RData")
