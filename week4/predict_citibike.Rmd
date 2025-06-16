@@ -1,9 +1,12 @@
+```{r setup}
 library(tidyverse)
 library(scales)
 library(modelr)
+
 trips_per_day_with_test <- read_tsv("trips_per_day.tsv")
+```
 
-
+```{r seperating test data}
 set.seed(24)
 
 num_days <- nrow(trips_per_day_with_test)
@@ -16,7 +19,9 @@ ndx <- sample(1:num_days, num_test, replace=F)
 # used to fit the model
 trips_per_day <- trips_per_day_with_test[-ndx, ]
 test_set <- trips_per_day_with_test[ndx, ]
+```
 
+```{r k-fold cross-validation polynomials}
 #k-fold cross-validation
 set.seed(42)
 num_folds <- 5
@@ -58,8 +63,9 @@ ggplot(plot_data, aes(x=K, y=avg_validate_err)) +
   theme(legend.position="none") +
   xlab('Polynomial Degree') +
   ylab('RMSE on validation data')
+  ```
 
-
+```{r dividing into training and validating}
 #delete fold
 trips_per_day <- select(trips_per_day, -fold)
 #cross-validate with checking with all features through adding
@@ -77,7 +83,9 @@ trips_per_day_train <- trips_per_day[ndx, ]
 
 # used to evaluate the fit
 trips_per_day_validate <- trips_per_day[-ndx, ]
+```
 
+```{r model experimenting} 
 # fit on the training data
 model_with_all_additive <- lm(num_trips ~ . - date - ymd, data = trips_per_day_train)
 
@@ -163,7 +171,6 @@ train_err_month
 validate_err_month
 #5490
 
-
 trips_per_day_train <- select(trips_per_day_train, -month)
 trips_per_day_validate <- select(trips_per_day_validate, -month)
 
@@ -178,10 +185,8 @@ train_err_pst
 #4731
 validate_err_pst
 #4975
-
 summary(trips_per_day_train)
 summary(model_prcp_snwd_tmax)
-
 
 model_poly2 <- lm(num_trips ~ poly(tmax, 2, raw=TRUE) + poly(tmin, 2, raw=TRUE) + 
                               poly(prcp, 2, raw=TRUE) + poly(snow, 2, raw=TRUE) + 
@@ -219,6 +224,13 @@ train_err_ipst
 #4648
 validate_err_ipst
 #5913
+```
+
+```{r adding features}
+trips_per_day$high_precip <- as.factor(trips_per_day$high_precip)
+trips_per_day$weekday <- as.factor(trips_per_day$weekday)
+trips_per_day$season <- as.factor(trips_per_day$season)
+
 get_season <- function(date) {
   month <- as.numeric(format(date, "%m"))
   if (month %in% c(12, 1, 2)) {
@@ -233,8 +245,10 @@ get_season <- function(date) {
 }
 trips_per_day$season <- sapply(trips_per_day$ymd, get_season)
 trips_per_day$weekday <- !(weekdays(trips_per_day$ymd) %in% c("Saturday", "Sunday"))
+```
 
 
+```{r k-fold testing model}
 set.seed(42)
 num_folds <- 5
 num_days <- nrow(trips_per_day)
@@ -247,7 +261,7 @@ trips_per_day <- trips_per_day %>%
 validate_rmse <- c()
 train_rmse <- c()
 
-# Cross-validation loop
+# Cross-validation k-fold
 for (f in 1:num_folds) {
   # Split into training and validation
   train_data <- filter(trips_per_day, fold != f)
@@ -273,7 +287,11 @@ cat("Train RMSE for each fold:", round(train_rmse, 2), "\n")
 cat("Average RMSE:", round(average_rmse, 2), "\n")
 cat("Train Average RMSE:", round(average_train_rmse, 2), "\n")
 cat("Standard Error:", round(se_rmse, 2), "\n")
+```
 
+
+```{r plotting-model}
+#add predict colum for plotting
 trips_per_day_validate$predicted_trips <- predict(model, newdata = trips_per_day_validate)
 
 ggplot(trips_per_day_validate, aes(x = date)) +
@@ -288,5 +306,9 @@ ggplot(trips_per_day_validate, aes(x = predicted_trips, y = num_trips)) +
   labs(title = "Predicted vs Actual Trips",
        x = "Predicted Trips", y = "Actual Trips") 
 
+```
+
+```{r save-model}
 final_model <- model
 save(final_model, file = "final_model.RData")
+```
