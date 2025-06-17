@@ -227,6 +227,8 @@ validate_err_ipst
 ```
 
 ```{r adding features}
+mean_precip <- mean(trips_per_day$prcp, na.rm = TRUE)
+trips_per_day$high_precip <- trips_per_day$prcp > mean_precip
 trips_per_day$high_precip <- as.factor(trips_per_day$high_precip)
 trips_per_day$weekday <- as.factor(trips_per_day$weekday)
 trips_per_day$season <- as.factor(trips_per_day$season)
@@ -267,7 +269,7 @@ for (f in 1:num_folds) {
   train_data <- filter(trips_per_day, fold != f)
   validate_data <- filter(trips_per_day, fold == f)
   
-  model <- lm(num_trips ~ tmax * high_prcp + snwd + tmax:snow + weekday * season, data = train_data)
+  model <- lm(num_trips ~ tmax * high_precip + snwd + tmax:snow + weekday * season, data = train_data)
   
   # Predict and compute RMSE on validation set
   predictions <- predict(model, newdata = validate_data)
@@ -311,4 +313,33 @@ ggplot(trips_per_day_validate, aes(x = predicted_trips, y = num_trips)) +
 ```{r save-model}
 final_model <- model
 save(final_model, file = "final_model.RData")
+```
+```{r test!}
+ model <- lm(num_trips ~ tmax * high_precip + snwd + tmax:snow + weekday * season, data = trips_per_day)
+
+ mean_precip <- mean(test_set$prcp, na.rm = TRUE)
+trips_per_day$high_precip <- test_sety$prcp > mean_precip
+trips_per_day$high_precip <- as.factor(test_set$high_precip)
+trips_per_day$weekday <- as.factor(test_set$weekday)
+trips_per_day$season <- as.factor(test_set$season)
+
+get_season <- function(date) {
+  month <- as.numeric(format(date, "%m"))
+  if (month %in% c(12, 1, 2)) {
+    return("Winter")
+  } else if (month %in% c(3, 4, 5)) {
+    return("Spring")
+  } else if (month %in% c(6, 7, 8)) {
+    return("Summer")
+  } else {
+    return("Fall")
+  }
+}
+trips_per_day$season <- sapply(trips_per_day$ymd, get_season)
+trips_per_day$weekday <- !(weekdays(trips_per_day$ymd) %in% c("Saturday", "Sunday"))
+predictions <- predict(model, newdata = test_set)
+t_rmse <- sqrt(mean(predictions - trips_per_day$num_trips)^2)
+rmse <- sqrt(mean((predictions - test_set$num_trips)^2))
+t_rmse
+rmse
 ```
